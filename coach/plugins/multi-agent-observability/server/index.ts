@@ -5,11 +5,28 @@
  * from Claude Code agents across all projects.
  */
 
+import { join, extname } from 'path';
 import type { ServerWebSocket } from 'bun';
 import type { HookEvent, WebSocketMessage } from './types';
 import { insertEvent, getRecentEvents, getFilterOptions, clearEvents, getEventCount } from './db';
 
 const PORT = Number(process.env.OBSERVABILITY_PORT) || 4000;
+
+// Dashboard static files directory (built React app)
+const DASHBOARD_DIR = join(import.meta.dir, '..', 'dashboard', 'dist');
+
+// MIME types for static files
+const MIME_TYPES: Record<string, string> = {
+  '.html': 'text/html',
+  '.js': 'application/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+};
 
 // Track connected WebSocket clients
 const clients = new Set<ServerWebSocket<unknown>>();
@@ -50,6 +67,67 @@ function jsonResponse(data: unknown, status: number = 200): Response {
       ...corsHeaders()
     }
   });
+}
+
+/**
+ * Serve static files from the dashboard build directory.
+ * Falls back to index.html for SPA client-side routing.
+ */
+async function serveStaticFile(pathname: string): Promise<Response> {
+  // Normalize path - remove leading slash and default to index.html
+  let filePath = pathname === '/' ? 'index.html' : pathname.slice(1);
+
+  // Security: prevent directory traversal
+  if (filePath.includes('..')) {
+    return jsonResponse({ error: 'Forbidden' }, 403);
+  }
+
+  const fullPath = join(DASHBOARD_DIR, filePath);
+
+  // Try to serve the requested file
+  const file = Bun.file(fullPath);
+  if (await file.exists()) {
+    const ext = extname(filePath);
+    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    return new Response(file, {
+      headers: {
+        'Content-Type': contentType,
+        ...corsHeaders()
+      }
+    });
+  }
+
+  // For SPA: if file not found and not an API route, serve index.html
+  const indexPath = join(DASHBOARD_DIR, 'index.html');
+  const indexFile = Bun.file(indexPath);
+  if (await indexFile.exists()) {
+    return new Response(indexFile, {
+      headers: {
+        'Content-Type': 'text/html',
+        ...corsHeaders()
+      }
+    });
+  }
+
+  // No dashboard built yet
+  return new Response(
+    `<!DOCTYPE html>
+<html>
+<head><title>Observability Dashboard</title></head>
+<body style="font-family: system-ui; background: #09090b; color: #e4e4e7; padding: 40px; text-align: center;">
+  <h1>Dashboard Not Built</h1>
+  <p>Run <code style="background: #27272a; padding: 4px 8px; border-radius: 4px;">cd dashboard && npm install && npm run build</code> to build the dashboard.</p>
+  <p style="margin-top: 20px; color: #71717a;">API endpoints are available at /health, /events, etc.</p>
+</body>
+</html>`,
+    {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/html',
+        ...corsHeaders()
+      }
+    }
+  );
 }
 
 /**
@@ -113,8 +191,8 @@ const server = Bun.serve({
       return jsonResponse({ message: 'All events cleared' });
     }
 
-    // 404 for unknown routes
-    return jsonResponse({ error: 'Not found' }, 404);
+    // Serve static files from dashboard (fallback to index.html for SPA routing)
+    return serveStaticFile(url.pathname);
   },
 
   websocket: {
@@ -199,5 +277,6 @@ async function handlePostEvent(req: Request): Promise<Response> {
 }
 
 console.log(`🔭 Observability server running on http://localhost:${PORT}`);
-console.log(`   WebSocket endpoint: ws://localhost:${PORT}/stream`);
-console.log(`   Data stored at: ~/.claude-observability/events.db`);
+console.log(`   Dashboard: http://localhost:${PORT}`);
+console.log(`   WebSocket: ws://localhost:${PORT}/stream`);
+console.log(`   Database: ~/.claude-observability/events.db`);
