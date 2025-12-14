@@ -1,0 +1,15 @@
+{
+  "name": "multi-agent-observability-server",
+  "version": "1.0.0",
+  "description": "HTTP/WebSocket server for multi-agent observability",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "start": "bun run index.ts",
+    "dev": "bun run --watch index.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

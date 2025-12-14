@@ -1,0 +1,10 @@
+{
+  "name": "multi-agent-observability",
+  "version": "1.0.0",
+  "description": "Real-time monitoring dashboard for Claude Code agents across all projects",
+  "author": {
+    "name": "Claude Code Observability"
+  },
+  "keywords": ["observability", "monitoring", "debugging", "multi-agent", "dashboard"],
+  "hooks": "./hooks/hooks.json"
+}
